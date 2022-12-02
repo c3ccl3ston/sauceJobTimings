@@ -6,49 +6,49 @@ HELP=$'to get job timings for a single job, run:  jobTimings -d <DC> -t <test us
 
 # As long as there is at least one more argument, keep looping
 while [[ $# -gt 0 ]]; do
-    key="$1"
-    case "$key" in
-        -h|--help)
-        echo "$HELP"
-        exit 1
-        ;;
-        -d|--dc)
-        shift # past the key and to the value
-        DC="$1"
-        ;;
-        -t|--testuser)
-        shift # past the key and to the value
-        TESTUSER="$1"
-        ;;
-        -j|--jobid)
-        shift # past the key and to the value
-        JOBID="$1"
-        ;;
-        -n|--numJobs)
-        shift # past the key and to the value
-        NUMJOBS="$1"
-        ;;
-        -b|--brief)
-        shift # past the key and to the value
-        BRIEF=1
-        ;;
-        *)
-        # Do whatever you want with extra options
-        echo "Unknown option '$key'"
-        ;;
-    esac
-    # Shift after checking all the cases to get the next option
-    shift
+	key="$1"
+	case "$key" in
+		-h|--help)
+		echo "$HELP"
+		exit 1
+		;;
+		-d|--dc)
+		shift # past the key and to the value
+		DC="$1"
+		;;
+		-t|--testuser)
+		shift # past the key and to the value
+		TESTUSER="$1"
+		;;
+		-j|--jobid)
+		shift # past the key and to the value
+		JOBID="$1"
+		;;
+		-n|--numJobs)
+		shift # past the key and to the value
+		NUMJOBS="$1"
+		;;
+		-b|--brief)
+		shift # past the key and to the value
+		BRIEF=1
+		;;
+		*)
+		# Do whatever you want with extra options
+		echo "Unknown option '$key'"
+		;;
+	esac
+	# Shift after checking all the cases to get the next option
+	shift
 done
 
 if [ -z "$SAUCE_USERNAME" ]; then
-    echo "Need to set SAUCE_USERNAME"
-    exit 1
+	echo "Need to set SAUCE_USERNAME"
+	exit 1
 fi  
 
 if [ -z "$SAUCE_ACCESS_KEY" ]; then
-    echo "Need to set SAUCE_ACCESS_KEY"
-    exit 1
+	echo "Need to set SAUCE_ACCESS_KEY"
+	exit 1
 fi
 
 if [ -z "${TESTUSER}" ]; then
@@ -81,13 +81,18 @@ if [ ! -z "$JOBID" ]; then
 	echo "Parsing commands from log.json"
 	jq '.[] | .duration' ${JSONFILE} > ${DURATIONSFILE}
 	jq '.[] | .between_commands' ${JSONFILE} > ${BETWEENSFILE}
-
+	awk '!/null/' ${BETWEENSFILE} > tmpfile && mv tmpfile ${BETWEENSFILE}
+	
 	NUMCOMMANDS=$(cat ${DURATIONSFILE} | wc -l )
 	TOTALDURATIONS=$(jq -s add ${DURATIONSFILE})
 	TOTALBETWEEN=$(jq -s add ${BETWEENSFILE})
 	TOTALTIME=$(dc <<<"${TOTALDURATIONS} ${TOTALBETWEEN} + p")
 	AVGDURATION=$(jq -s 'add/length' ${DURATIONSFILE})
 	AVGBETWEEN=$(jq -s 'add/length' ${BETWEENSFILE})
+	LONGEST=$(jq -s max ${DURATIONSFILE})	
+	SHORTEST=$(jq -s min ${DURATIONSFILE})
+	LONGESTBETWEEN=$(jq -s max ${BETWEENSFILE})
+	SHORTESTBETWEEN=$(jq -s min ${BETWEENSFILE})
 
 	echo "Number of commands:" ${NUMCOMMANDS}
 	echo "Total test duration:" ${TOTALTIME}
@@ -95,7 +100,10 @@ if [ ! -z "$JOBID" ]; then
 	echo "Average command duration:" ${AVGDURATION}
 	echo "Total time between commands:" ${TOTALBETWEEN}
 	echo "Average time between commands:" ${AVGBETWEEN}
-
+	echo "Longest command:" ${LONGEST}
+	echo "Shortest command:" ${SHORTEST}
+	echo "Longest time between commands:" ${LONGESTBETWEEN}
+	echo "Shortest time between commands:" ${SHORTESTBETWEEN}
 	exit 
 fi
 
@@ -113,7 +121,7 @@ if [ ! -z "$NUMJOBS" ]; then
 	curl -s -u $SAUCE_USERNAME:$SAUCE_ACCESS_KEY ${DCURL}/rest/v1/${TESTUSER}/jobs?limit=${NUMJOBS} | jq -r '.[] .id' > ${JOBSJSONFILE}
 
 	while read p; do
-  		
+		  
 		JOBID=$p
 		curl -s -u $SAUCE_USERNAME:$SAUCE_ACCESS_KEY ${DCURL}/rest/v1/${TESTUSER}/jobs/${JOBID}/assets/log.json > ${JSONFILE}
 		jq '.[] | .duration' ${JSONFILE} > ${DURATIONSFILE}
@@ -124,11 +132,16 @@ if [ ! -z "$NUMJOBS" ]; then
 		TOTALTIME=$(dc <<<"${TOTALDURATIONS} ${TOTALBETWEEN} + p")
 		AVGDURATION=$(jq -s 'add/length' ${DURATIONSFILE})
 		AVGBETWEEN=$(jq -s 'add/length' ${BETWEENSFILE})
-		
+		LONGEST=$(jq -s max ${DURATIONSFILE})
+		SHORTEST=$(jq -s min ${DURATIONSFILE})
+		LONGESTBETWEEN=$(jq -s max ${BETWEENSFILE})
+		SHORTESTBETWEEN=$(jq -s min ${BETWEENSFILE})
+
 		if [ ! -z "$BRIEF" ]; then
 			echo ${JOBID}", "$AVGDURATION
 		else
-			echo ${JOBID} "commands:" ${NUMCOMMANDS}", total time:" $TOTALTIME", total durations:" ${TOTALDURATIONS}", avg duration:" $AVGDURATION", total between:" $TOTALBETWEEN", avg between:" $AVGBETWEEN
+			echo ${JOBID} "commands:" ${NUMCOMMANDS}", total time:" $TOTALTIME", total durations:" ${TOTALDURATIONS}", avg duration:" $AVGDURATION", total between:" $TOTALBETWEEN", avg between:" $AVGBETWEEN", longest command:" $LONGEST", shortest command:" $SHORTEST", longest between commands:" $LONGESTBETWEEN", shortest between commands:" $SHORTESTBETWEEN
+
 		fi
 
 	done <$JOBSJSONFILE
